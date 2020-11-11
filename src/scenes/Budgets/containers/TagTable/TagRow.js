@@ -21,7 +21,7 @@ import { Droppable, Draggable } from 'react-beautiful-dnd'
 import { getGoal } from 'store/localData/hiddenData/goals'
 import { useSelector, shallowEqual } from 'react-redux'
 import { getGoalProgress } from 'scenes/Budgets/selectors/goalsProgress'
-import { Amount } from '../components'
+import { Amount, Line } from '../components'
 import { useContext } from 'react'
 import { IsDraggingContext, DragModeContext } from '../DnDContext'
 import { getPopulatedTag } from 'store/localData/tags'
@@ -55,6 +55,7 @@ const useStyles = makeStyles(theme => ({
   warning: {
     transform: 'translateY(4px)',
     marginRight: theme.spacing(0.5),
+    display: 'inline-block',
   },
   dropZone: {
     background: theme.palette.action.selected,
@@ -71,6 +72,9 @@ export function TagRow(props) {
     date,
     showAll,
     metric,
+    showOverspend,
+    daysInMonth,
+    currDay,
 
     openGoalPopover,
     openBudgetPopover,
@@ -114,6 +118,13 @@ export function TagRow(props) {
   )
     return null
 
+  let overspend, overspendPercent, plannedOutcomeForToday
+  if (showOverspend && budgeted !== outcome) {
+    plannedOutcomeForToday = (budgeted * currDay) / daysInMonth
+    overspend = plannedOutcomeForToday - outcome
+    overspendPercent = (outcome / plannedOutcomeForToday - 1) * 100
+  }
+
   const showBudget = isChild ? !!budgeted : true
 
   const renderContent = (provided, snapshot) => (
@@ -138,7 +149,11 @@ export function TagRow(props) {
       {(metric === 'outcome' || !isMobile) && (
         <OutcomeCell
           outcome={outcome}
+          overspend={overspend}
+          overspendPercent={overspendPercent}
+          plannedOutcomeForToday={plannedOutcomeForToday}
           onClick={() => openTransactionsPopover(id)}
+          c={c}
         />
       )}
 
@@ -152,6 +167,7 @@ export function TagRow(props) {
           isChild={isChild}
           budgeted={budgeted}
           isUnsorted={isUnsorted}
+          c={c}
         />
       )}
 
@@ -239,23 +255,53 @@ function BudgetCell(props) {
 }
 
 function OutcomeCell(props) {
-  const { outcome, onClick } = props
+  const {
+    outcome,
+    onClick,
+    overspend,
+    overspendPercent,
+    plannedOutcomeForToday,
+    c,
+  } = props
+
+  const color =
+    overspend < 0 ? 'error.main' : outcome ? 'text.primary' : 'text.hint'
+
+  let children = <Amount value={-outcome} decMode="ifOnly" />
+
+  if (overspend < 0) {
+    children = (
+      <>
+        <Tooltip
+          arrow
+          interactive
+          title={
+            <span>
+              <Line name="Перерасход" amount={overspend} />
+              <Line name="Перерасход в %" amount={overspendPercent} />
+              <Line name="Планируемый расход" amount={plannedOutcomeForToday} />
+            </span>
+          }
+        >
+          <span>
+            <span className={c.warning} onClick={stopPropagation}>
+              <WarningIcon fontSize="small" color="error" />
+            </span>
+            {children}
+          </span>
+        </Tooltip>
+      </>
+    )
+  }
+
   return (
-    <Box color={outcome ? 'text.primary' : 'text.hint'} clone>
+    <Box color={color} clone>
       <Typography variant="body1" align="right" onClick={onClick}>
-        <Amount value={-outcome} decMode="ifOnly" />
+        {children}
       </Typography>
     </Box>
   )
 }
-
-const useAvailableStyles = makeStyles(theme => ({
-  dropZone: {
-    background: theme.palette.action.selected,
-    transition: '0.1s',
-    borderRadius: theme.shape.borderRadius,
-  },
-}))
 
 function AvailableCell(props) {
   const {
@@ -267,8 +313,8 @@ function AvailableCell(props) {
     isChild,
     budgeted,
     isUnsorted,
+    c,
   } = props
-  const c = useAvailableStyles()
   const availableColor = getAvailableColor(available, isChild, !!budgeted)
 
   const renderCellContent = (provided = {}, snapshot = {}) => (
@@ -302,7 +348,9 @@ function AvailableCell(props) {
               </span>
             }
           >
-            <WarningIcon fontSize="small" color="error" />
+            <span className={c.warning}>
+              <WarningIcon fontSize="small" color="error" />
+            </span>
           </Tooltip>
         )}
 
@@ -351,4 +399,8 @@ function getAvailableColor(available, isChild, hasBudget) {
   if (!isChild || hasBudget) return negative
   // child tag without budget
   else return neutral
+}
+
+function stopPropagation(event) {
+  event.stopPropagation()
 }
